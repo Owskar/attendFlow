@@ -3,11 +3,51 @@ from models import db, Staff, Student, Attendance
 from config import Config
 from datetime import datetime, date
 from sqlalchemy import func, case
+import os
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# CRITICAL: Create instance folder before initializing database
+instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+os.makedirs(instance_path, exist_ok=True)
+
 db.init_app(app)
+
+# Initialize database on startup
+with app.app_context():
+    db.create_all()
+    
+    # Create default admin if not exists
+    if not Staff.query.first():
+        admin = Staff(
+            name='Admin Staff',
+            email='admin@cs.dept',
+            department='CS Department'
+        )
+        admin.set_password('admin123')
+        db.session.add(admin)
+        print("✓ Created default admin account")
+    
+    # Create students if not exist
+    if not Student.query.first():
+        students = []
+        for division in Config.DIVISIONS:
+            for i in range(1, Config.STUDENTS_PER_DIVISION + 1):
+                roll_no = f"{division}{i:02d}"
+                student = Student(
+                    roll_no=roll_no,
+                    name=f"Student {roll_no}",
+                    division=division
+                )
+                students.append(student)
+        
+        db.session.bulk_save_objects(students)
+        print(f"✓ Created {len(students)} students")
+    
+    db.session.commit()
+    print("✓ Database initialized successfully!")
+
 
 # Helper function to check if user is logged in
 def login_required(f):
@@ -230,45 +270,6 @@ def get_low_attendance_students():
     return low_attendance
 
 
-# if __name__ == '__main__':
-#     app.run(debug=True)
-
 if __name__ == '__main__':
-    # Create instance folder if it doesn't exist
-    import os
-    os.makedirs('instance', exist_ok=True)
-    
-    # Initialize database if it doesn't exist
-    with app.app_context():
-        db.create_all()
-        # Create default admin if not exists
-        from models import Staff
-        if not Staff.query.first():
-            admin = Staff(
-                name='Admin Staff',
-                email='admin@cs.dept',
-                department='CS Department'
-            )
-            admin.set_password('admin123')
-            db.session.add(admin)
-            
-            # Create students
-            from models import Student
-            if not Student.query.first():
-                students = []
-                for division in Config.DIVISIONS:
-                    for i in range(1, Config.STUDENTS_PER_DIVISION + 1):
-                        roll_no = f"{division}{i:02d}"
-                        student = Student(
-                            roll_no=roll_no,
-                            name=f"Student {roll_no}",
-                            division=division
-                        )
-                        students.append(student)
-                db.session.bulk_save_objects(students)
-            
-            db.session.commit()
-    
-    # Run the app
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
